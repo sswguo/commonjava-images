@@ -1,47 +1,24 @@
-FROM adoptopenjdk:8-jre-hotspot-bionic
+FROM centos:7
 
-# explicitly set user/group IDs
-RUN set -eux; \
-	groupadd -r cassandra --gid=999; \
-	useradd -r -g cassandra --uid=999 cassandra
+USER root
 
-RUN set -eux; \
-	apt-get update; \
-	apt-get install -y --no-install-recommends \
-# solves warning: "jemalloc shared library could not be preloaded to speed up memory allocations"
-		libjemalloc1 \
-# "free" is used by cassandra-env.sh
-		procps \
-# "cqlsh" needs a python interpreter
-		python \
-# "ip" is not required by Cassandra itself, but is commonly used in scripting Cassandra's configuration (since it is so fixated on explicit IP addresses)
-		iproute2 \
-# Cassandra will automatically use numactl if available
-#   https://github.com/apache/cassandra/blob/18bcda2d4c2eba7370a0b21f33eed37cb730bbb3/bin/cassandra#L90-L100
-#   https://github.com/apache/cassandra/commit/604c0e87dc67fa65f6904ef9a98a029c9f2f865a
-		numactl \
-	; \
-	rm -rf /var/lib/apt/lists/*
+RUN yum update -y && \
+    yum install -y java-1.8.0-openjdk-devel libjemalloc1  wget procps python iproute2 numactl ca-certificates dirmngr gnupg && \
+    yum clean all
+
+RUN groupadd -r cassandra; \
+    useradd -r -g cassandra cassandra
 
 # grab gosu for easy step-down from root
 # https://github.com/tianon/gosu/releases
 ENV GOSU_VERSION 1.12
-RUN set -eux; \
-	savedAptMark="$(apt-mark showmanual)"; \
-	apt-get update; \
-	apt-get install -y --no-install-recommends ca-certificates dirmngr gnupg wget; \
-	rm -rf /var/lib/apt/lists/*; \
-	dpkgArch="$(dpkg --print-architecture | awk -F- '{ print $NF }')"; \
-	wget -O /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$dpkgArch"; \
-	wget -O /usr/local/bin/gosu.asc "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$dpkgArch.asc"; \
+RUN	wget -O /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-amd64"; \
+	wget -O /usr/local/bin/gosu.asc "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-amd64.asc"; \
 	export GNUPGHOME="$(mktemp -d)"; \
 	gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys B42F6819007F00F88E364FD4036A9C25BF357DD4; \
 	gpg --batch --verify /usr/local/bin/gosu.asc /usr/local/bin/gosu; \
 	gpgconf --kill all; \
 	rm -rf "$GNUPGHOME" /usr/local/bin/gosu.asc; \
-	apt-mark auto '.*' > /dev/null; \
-	[ -z "$savedAptMark" ] || apt-mark manual $savedAptMark > /dev/null; \
-	apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false; \
 	chmod +x /usr/local/bin/gosu; \
 	gosu --version; \
 	gosu nobody true
@@ -62,13 +39,7 @@ ENV GPG_KEYS \
 ENV CASSANDRA_VERSION 3.11.6
 ENV CASSANDRA_SHA512 0e778f8fb4a050fde3ec174a9ca365e49ef437cd9e61280b6b4dcba950418a3d04a104bb41aed1add858e2acc2513cf7df4065ca5ca751dd1daf60e70adc4042
 
-RUN set -eux; \
-	savedAptMark="$(apt-mark showmanual)"; \
-	apt-get update; \
-	apt-get install -y --no-install-recommends ca-certificates dirmngr gnupg wget; \
-	rm -rf /var/lib/apt/lists/*; \
-	\
-	ddist() { \
+RUN          ddist() { \
 		local f="$1"; shift; \
 		local distFile="$1"; shift; \
 		local success=; \
@@ -100,12 +71,9 @@ RUN set -eux; \
 	gpg --batch --verify cassandra-bin.tgz.asc cassandra-bin.tgz; \
 	rm -rf "$GNUPGHOME"; \
 	\
-	apt-mark auto '.*' > /dev/null; \
-	[ -z "$savedAptMark" ] || apt-mark manual $savedAptMark > /dev/null; \
-	apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false; \
-	\
 	mkdir -p "$CASSANDRA_HOME"; \
 	tar --extract --file cassandra-bin.tgz --directory "$CASSANDRA_HOME" --strip-components 1; \
+        rm -rf "$CASSANDRA_HOME/javadoc"; \
 	rm cassandra-bin.tgz*; \
 	\
 	[ ! -e "$CASSANDRA_CONF" ]; \
@@ -139,6 +107,7 @@ RUN set -eux; \
 # smoke test
 	cassandra -v
 
+
 VOLUME /var/lib/cassandra
 
 COPY docker-entrypoint.sh /usr/local/bin/
@@ -147,6 +116,9 @@ ENTRYPOINT ["docker-entrypoint.sh"]
 
 RUN mkdir -p /opt/jmx_prometheus
 COPY jmx_prometheus_javaagent/* /opt/jmx_prometheus/
+
+USER cassandra
+
 # 7000: intra-node communication
 # 7001: TLS intra-node communication
 # 7199: JMX

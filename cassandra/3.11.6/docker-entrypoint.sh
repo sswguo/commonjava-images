@@ -18,22 +18,16 @@ if [ -d "/custom/cassandra/config" ]; then
 fi
 
 # allow the container to be started with `--user`
-if [ "$1" = 'cassandra' -a "$(id -u)" = '0' ]; then
-	find /var/lib/cassandra /var/log/cassandra "$CASSANDRA_CONF" \
-		\! -user cassandra -exec chown cassandra '{}' +
-	exec gosu cassandra "$BASH_SOURCE" "$@"
-fi
+#if [ "$1" = 'cassandra' -a "$(id -u)" = '0' ]; then
+#	find /var/lib/cassandra /var/log/cassandra "$CASSANDRA_CONF" \
+#		\! -user cassandra -exec chown cassandra '{}' +
+#	exec gosu cassandra "$BASH_SOURCE" "$@"
+#fi
 
 _ip_address() {
 	# scrape the first non-localhost IP address of the container
 	# in Swarm Mode, we often get two IPs -- the container IP, and the (shared) VIP, and the container IP should always be first
-	ip address | awk '
-		$1 == "inet" && $NF != "lo" {
-			gsub(/\/.+$/, "", $2)
-			print $2
-			exit
-		}
-	'
+        hostname -i | awk '{print $1}'
 }
 
 if [ "$1" = 'cassandra' ]; then
@@ -87,6 +81,6 @@ fi
 
 ## === metrics agent
 set -eux
-echo 'JVM_OPTS="$JVM_OPTS -javaagent:'/opt/jmx_prometheus/jmx_prometheus_javaagent-0.12.0.jar=7070:/opt/jmx_prometheus/cassandra.yml'"' >> $CASSANDRA_CONF/cassandra-env.sh
+echo 'JVM_OPTS="$JVM_OPTS -javaagent:'/opt/jmx_prometheus/jmx_prometheus_javaagent-0.13.0.jar=7070:/opt/jmx_prometheus/cassandra.yml'"' >> $CASSANDRA_CONF/cassandra-env.sh
 
 exec "$@"
