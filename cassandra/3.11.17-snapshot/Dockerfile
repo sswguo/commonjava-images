@@ -105,7 +105,7 @@ RUN set -eux; \
 			#https://www-us.apache.org/dist/ \
 			#https://www.apache.org/dist/ \
 			#https://archive.apache.org/dist/ \
-			https://file.apac.redhat.com/~wguo/ \
+			https://<file_server>/~wguo/ \
 		; do \
 			if wget --no-check-certificate --progress=dot:giga -O "$f" "$distUrl$distFile" && [ -s "$f" ]; then \
 				success=1; \
